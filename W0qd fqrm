@@ -1,0 +1,287 @@
+-- Gold Hub - Auto Farm GUI for Lumber Tycoon 2
+-- Using WindUI Library v1.6.66
+
+local _version = "1.6.66"
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/download/" .. _version .. "/main.lua"))()
+
+local Window = WindUI:CreateWindow({
+   Title = "Gold Hub",
+   Icon = "coins",
+   Author = "by Cobalt"
+})
+
+-- Services
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local TreeAction = ReplicatedStorage:WaitForChild("TreeAction")
+local ChipperAction = ReplicatedStorage:WaitForChild("ChipperAction")
+local StandAction = ReplicatedStorage:WaitForChild("StandAction")
+local PlotRemotes = ReplicatedStorage:WaitForChild("PlotRemotes")
+local AxeMenu = PlotRemotes:WaitForChild("AxeMenu")
+local StumpShopBuy = ReplicatedStorage:WaitForChild("StumpShopBuy")
+
+-- Variables
+local autoAxeSpeed = false
+local autoStump = false
+local autoChipper = false
+local autoAxeLevel = false
+local autoStumpBuy = false
+local autoLuck = false
+local autoSpinStand = false
+local selectedAxeNumber = 1
+local selectedStumpNumber = 1
+local actionDelay = 0.1
+
+-- Automatic Gamepass Popup Remover (Always On)
+spawn(function()
+    while true do
+        pcall(function()
+            -- Disable PurchasePromptApp
+            if game.CoreGui:FindFirstChild("PurchasePromptApp") then
+                game.CoreGui.PurchasePromptApp.Enabled = false
+            end
+            
+            -- Disable FoundationOverlay
+            local FoundationOverlay = game.CoreGui:FindFirstChild("FoundationOverlay")
+            if FoundationOverlay then
+                FoundationOverlay.Enabled = false
+            end
+        end)
+        wait(0.1)
+    end
+end)
+
+-- Watch for new popups being added
+game.CoreGui.ChildAdded:Connect(function(ins)
+    if ins.Name == "FoundationOverlay" then
+        ins.Enabled = false
+    end
+    if ins.Name == "PurchasePromptApp" then
+        ins.Enabled = false
+    end
+end)
+
+-- Create Tabs
+local AutoFarmTab = Window:Tab({ Title = "Auto Farm", Icon = "tractor" })
+local StandTab = Window:Tab({ Title = "Stand", Icon = "dice-5" })
+local StumpTab = Window:Tab({ Title = "Stumps", Icon = "tree-deciduous" })
+local SettingsTab = Window:Tab({ Title = "Settings", Icon = "settings" })
+
+-- ====================================================================
+-- AUTO FARM TAB
+-- ====================================================================
+
+-- Axe Speed Auto Upgrade
+AutoFarmTab:Toggle({
+    Title = "Auto Upgrade Axe Speed",
+    Value = false,
+    Callback = function(state)
+        autoAxeSpeed = state
+        if state then
+            spawn(function()
+                while autoAxeSpeed do
+                    pcall(function()
+                        TreeAction:FireServer("axespeed")
+                    end)
+                    wait(actionDelay)
+                end
+            end)
+        end
+    end
+})
+
+-- Axe Level Auto Upgrade
+AutoFarmTab:Toggle({
+    Title = "Auto Upgrade Axe Level",
+    Value = false,
+    Callback = function(state)
+        autoAxeLevel = state
+        if state then
+            spawn(function()
+                while autoAxeLevel do
+                    pcall(function()
+                        AxeMenu:FireServer("level", selectedAxeNumber)
+                    end)
+                    wait(actionDelay)
+                end
+            end)
+        end
+    end
+})
+
+-- Axe Slot Input
+AutoFarmTab:Input({
+    Title = "Axe Slot Number (1-8)",
+    Placeholder = "Enter 1-8...",
+    Callback = function(text)
+        local num = tonumber(text)
+        if num and num >= 1 and num <= 8 then
+            selectedAxeNumber = math.floor(num)
+        end
+    end
+})
+
+-- Chipper Auto Upgrade
+AutoFarmTab:Toggle({
+    Title = "Auto Upgrade Chipper",
+    Value = false,
+    Callback = function(state)
+        autoChipper = state
+        if state then
+            spawn(function()
+                while autoChipper do
+                    pcall(function()
+                        ChipperAction:FireServer("upgrade")
+                    end)
+                    wait(actionDelay)
+                end
+            end)
+        end
+    end
+})
+
+-- ====================================================================
+-- STAND TAB
+-- ====================================================================
+
+-- Auto Upgrade Luck
+StandTab:Toggle({
+    Title = "Auto Upgrade Luck",
+    Value = false,
+    Callback = function(state)
+        autoLuck = state
+        if state then
+            spawn(function()
+                while autoLuck do
+                    pcall(function()
+                        StandAction:FireServer("luck")
+                    end)
+                    wait(actionDelay)
+                end
+            end)
+        end
+    end
+})
+
+-- Auto Buy Spin Stand
+StandTab:Toggle({
+    Title = "Auto Buy Spin Stand",
+    Value = false,
+    Callback = function(state)
+        autoSpinStand = state
+        if state then
+            spawn(function()
+                while autoSpinStand do
+                    pcall(function()
+                        StandAction:FireServer("buyspinstand")
+                    end)
+                    wait(0.5)
+                end
+            end)
+        end
+    end
+})
+
+-- ====================================================================
+-- STUMPS TAB
+-- ====================================================================
+
+-- Auto Buy Stump
+StumpTab:Toggle({
+    Title = "Auto Buy Stump",
+    Value = false,
+    Callback = function(state)
+        autoStump = state
+        if state then
+            spawn(function()
+                while autoStump do
+                    pcall(function()
+                        TreeAction:FireServer("buystump")
+                    end)
+                    wait(0.3)
+                end
+            end)
+        end
+    end
+})
+
+-- Auto Upgrade Stump
+StumpTab:Toggle({
+    Title = "Auto Upgrade Stump",
+    Value = false,
+    Callback = function(state)
+        autoStump = state
+        if state then
+            spawn(function()
+                while autoStump do
+                    pcall(function()
+                        TreeAction:FireServer("buystump")
+                    end)
+                    wait(0.3)
+                end
+            end)
+        end
+    end
+})
+
+-- Stump Shop Auto Buy
+StumpTab:Toggle({
+    Title = "Auto Buy from Stump Shop",
+    Value = false,
+    Callback = function(state)
+        autoStumpBuy = state
+        if state then
+            spawn(function()
+                while autoStumpBuy do
+                    pcall(function()
+                        StumpShopBuy:FireServer(selectedStumpNumber)
+                    end)
+                    wait(0.5)
+                end
+            end)
+        end
+    end
+})
+
+-- Stump Shop Number Input
+StumpTab:Input({
+    Title = "Stump Shop Number (1-8)",
+    Placeholder = "Enter 1-8...",
+    Callback = function(text)
+        local num = tonumber(text)
+        if num and num >= 1 and num <= 8 then
+            selectedStumpNumber = math.floor(num)
+        end
+    end
+})
+
+-- ====================================================================
+-- SETTINGS TAB
+-- ====================================================================
+
+-- Action Delay Input
+SettingsTab:Input({
+    Title = "Action Delay (0.01-1.0)",
+    Placeholder = "0.1",
+    Callback = function(text)
+        local num = tonumber(text)
+        if num and num >= 0.01 and num <= 1.0 then
+            actionDelay = num
+        end
+    end
+})
+
+-- Stop All Button
+SettingsTab:Button({
+    Title = "Stop All Automation",
+    Callback = function()
+        autoAxeSpeed = false
+        autoAxeLevel = false
+        autoChipper = false
+        autoStump = false
+        autoStumpBuy = false
+        autoLuck = false
+        autoSpinStand = false
+    end
+})
