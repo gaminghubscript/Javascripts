@@ -1,0 +1,318 @@
+-- 1. Initialize the WindUI Library Loader
+local _version = "1.6.66"
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/download/" .. _version .. "/main.lua"))()
+
+-- 2. Create the Window Framework
+local Window = WindUI:CreateWindow({
+   Title = "Gold Hub",
+   Icon = "coins", 
+   Author = "v1.0",
+   Folder = "GoldHub_Configs",
+   Size = UDim2.new(0, 580, 0, 460),
+   Transparent = true,
+   Theme = "Dark"
+})
+
+-- 3. Declare Tabs
+local MainTab = Window:Tab({ Title = "Main", Icon = "home" })
+local AutoTab = Window:Tab({ Title = "Autofarm", Icon = "refresh-cw" })
+
+--// Services
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+--// Feature Toggle Variables
+local AutoRebirth = false
+local AutoTrain = false
+local AutoBuyDumbbells = false
+local FastPunch = false
+local UseSpeedHack = false
+local CustomWalkSpeed = 150
+
+-- Status Counters
+local statsCount = { levels = 0, wins = 0, rebirths = 0 }
+
+--====================================================================
+-- AUTO REBIRTH
+--====================================================================
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if AutoRebirth then
+            pcall(function()
+                ReplicatedStorage.Remotes.Rebirth:InvokeServer()
+            end)
+        end
+    end
+end)
+
+--====================================================================
+-- AUTO TRAIN (MAX SPEED)
+--====================================================================
+task.spawn(function()
+    while true do
+        task.wait(0.001)
+        if AutoTrain then
+            pcall(function()
+                ReplicatedStorage.Remotes.Train:FireServer()
+            end)
+        end
+    end
+end)
+
+--====================================================================
+-- FAST PUNCH (MAX SPEED)
+--====================================================================
+task.spawn(function()
+    while true do
+        task.wait(0.001)
+        if FastPunch then
+            pcall(function()
+                ReplicatedStorage.Remotes.Punch:FireServer("RightHand")
+            end)
+            pcall(function()
+                ReplicatedStorage.Remotes.Punch:FireServer("LeftHand")
+            end)
+        end
+    end
+end)
+
+--====================================================================
+-- SMART AUTO BUY DUMBBELL
+--====================================================================
+task.spawn(function()
+    while true do
+        task.wait(1.5)
+        if AutoBuyDumbbells then
+            pcall(function()
+                local ownedDumbbells = ReplicatedStorage.Remotes.GetOwnedDumbbells:InvokeServer()
+                
+                if ownedDumbbells and type(ownedDumbbells) == "table" then
+                    local highestOwned = 0
+                    for _, dbName in ipairs(ownedDumbbells) do
+                        local num = tonumber(dbName)
+                        if num and num > highestOwned then
+                            highestOwned = num
+                        end
+                    end
+                    
+                    local nextDumbbell = tostring(highestOwned + 1)
+                    ReplicatedStorage.Remotes.BuyDumbbell:InvokeServer(nextDumbbell)
+                else
+                    for i = 1, 50 do
+                        ReplicatedStorage.Remotes.BuyDumbbell:InvokeServer(tostring(i))
+                    end
+                end
+            end)
+        end
+    end
+end)
+
+--====================================================================
+-- WALKSPEED HACK HACK ENGINE
+--====================================================================
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        pcall(function()
+            local character = LocalPlayer.Character
+            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                if UseSpeedHack then
+                    humanoid.WalkSpeed = tonumber(CustomWalkSpeed) or 150
+                else
+                    -- Standard Roblox walkspeed when toggled off
+                    humanoid.WalkSpeed = 16 
+                end
+            end
+        end)
+    end
+end)
+
+--====================================================================
+-- STATS TRACKING
+--====================================================================
+task.spawn(function()
+    while true do
+        task.wait(1)
+        pcall(function()
+            local leaderstats = LocalPlayer:FindFirstChild("leaderstats")
+            if leaderstats then
+                local level = leaderstats:FindFirstChild("Level")
+                local wins = leaderstats:FindFirstChild("Wins")
+                local rebirths = leaderstats:FindFirstChild("Rebirths")
+                if level then statsCount.levels = level.Value end
+                if wins then statsCount.wins = wins.Value end
+                if rebirths then statsCount.rebirths = rebirths.Value end
+            end
+        end)
+    end
+end)
+
+-- ====================================================================
+-- MAIN TAB ELEMENTS
+-- ====================================================================
+MainTab:Toggle({
+    Title = "Auto Train",
+    Desc = "Rapidly trains your character at max speed",
+    Value = false,
+    Callback = function(Value) AutoTrain = Value end
+})
+
+MainTab:Toggle({
+    Title = "Auto Rebirth",
+    Desc = "Automatically rebirths repeatedly",
+    Value = false,
+    Callback = function(Value) AutoRebirth = Value end
+})
+
+MainTab:Toggle({
+    Title = "Fast Punch",
+    Desc = "Hyper-fast alternating hand punches",
+    Value = false,
+    Callback = function(Value) FastPunch = Value end
+})
+
+-- ====================================================================
+-- AUTOFARM TAB ELEMENTS
+-- ====================================================================
+AutoTab:Toggle({
+    Title = "Enable Speed Hack",
+    Desc = "Overrides your default movement speed",
+    Value = false,
+    Callback = function(Value) UseSpeedHack = Value end
+})
+
+AutoTab:TextBox({
+    Title = "Custom WalkSpeed",
+    Desc = "Set custom walk speed value (Default is 150)",
+    Value = "150",
+    Callback = function(Text)
+        local speed = tonumber(Text)
+        if speed then
+            CustomWalkSpeed = speed
+        end
+    end
+})
+
+AutoTab:Toggle({
+    Title = "Smart Auto Buy Dumbbell",
+    Desc = "Automatically buys the next best dumbbell you need",
+    Value = false,
+    Callback = function(Value) AutoBuyDumbbells = Value end
+})
+
+--// LIVE STATUS PANEL
+task.spawn(function()
+    local parent = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+    if not parent then
+        local okh, hui = pcall(function() return gethui() end)
+        parent = (okh and hui) or game:GetService("CoreGui")
+    end
+    
+    pcall(function()
+        local old = parent:FindFirstChild("AutoStatusGui")
+        if old then old:Destroy() end
+    end)
+
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "AutoStatusGui"
+    gui.ResetOnSpawn = false
+    gui.IgnoreGuiInset = true
+    gui.DisplayOrder = 9999
+    gui.Parent = parent
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 200, 0, 150)
+    frame.Position = UDim2.new(0, 10, 0, 90)
+    frame.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+    frame.BackgroundTransparency = 0.1
+    frame.BorderSizePixel = 0
+    frame.Active = true
+    frame.Parent = gui
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 24)
+    title.BackgroundColor3 = Color3.fromRGB(38, 40, 54)
+    title.BorderSizePixel = 0
+    title.Text = "GOLD HUB STATUS"
+    title.TextColor3 = Color3.fromRGB(235, 190, 60)
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 13
+    title.Parent = frame
+    Instance.new("UICorner", title).CornerRadius = UDim.new(0, 8)
+
+    local body = Instance.new("TextLabel")
+    body.Size = UDim2.new(1, -12, 1, -30)
+    body.Position = UDim2.new(0, 8, 0, 28)
+    body.BackgroundTransparency = 1
+    body.TextXAlignment = Enum.TextXAlignment.Left
+    body.TextYAlignment = Enum.TextYAlignment.Top
+    body.RichText = true
+    body.Text = "Loading..."
+    body.TextColor3 = Color3.fromRGB(235, 235, 245)
+    body.Font = Enum.Font.Code
+    body.TextSize = 12
+    body.Parent = frame
+
+    local UIS = game:GetService("UserInputService")
+    local dragging, ds, sp
+    title.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging, ds, sp = true, i.Position, frame.Position
+            i.Changed:Connect(function()
+                if i.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
+        end
+    end)
+    UIS.InputChanged:Connect(function(i)
+        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            local d = i.Position - ds
+            frame.Position = UDim2.new(sp.X.Scale, sp.X.Offset + d.X, sp.Y.Scale, sp.Y.Offset + d.Y)
+        end
+    end)
+
+    local RunService = game:GetService("RunService")
+    local frames, fps, fpsT = 0, 0, tick()
+    RunService.RenderStepped:Connect(function()
+        frames = frames + 1
+        if tick() - fpsT >= 1 then fps, frames, fpsT = frames, 0, tick() end
+    end)
+
+    local function on(b) return b and "<font color='#7CFF7C'>ON</font>" or "<font color='#777'>off</font>" end
+
+    while gui.Parent do
+        body.Text = string.format(
+            "FPS:  %d\n"
+          .. "Level: %d\n"
+          .. "Wins:  %d\n"
+          .. "Reb:   %d\n"
+          .. "-------------------\n"
+          .. "Train:   %s\n"
+          .. "Punch:   %s\n"
+          .. "Speed:   %s (%d)\n"
+          .. "AutoBuy: %s\n"
+          .. "Rebirth:  %s",
+            fps,
+            statsCount.levels,
+            statsCount.wins,
+            statsCount.rebirths,
+            on(AutoTrain),
+            on(FastPunch),
+            on(UseSpeedHack),
+            CustomWalkSpeed,
+            on(AutoBuyDumbbells),
+            on(AutoRebirth)
+        )
+        task.wait(0.25)
+    end
+end)
+
+WindUI:Notification({
+    Title = "Gold Hub Loaded!",
+    Content = "Speed Hack adjustments configured!",
+    Duration = 3,
+    Type = "success"
+})
