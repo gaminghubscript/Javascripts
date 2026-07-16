@@ -29,6 +29,7 @@ local autoAxeLevel = false
 local autoStumpBuy = false
 local autoLuck = false
 local autoSpinStand = false
+local autoCollectWood = false
 local selectedAxeNumber = 1
 local selectedStumpNumber = 1
 local actionDelay = 0.1
@@ -37,12 +38,10 @@ local actionDelay = 0.1
 spawn(function()
     while true do
         pcall(function()
-            -- Disable PurchasePromptApp
             if game.CoreGui:FindFirstChild("PurchasePromptApp") then
                 game.CoreGui.PurchasePromptApp.Enabled = false
             end
             
-            -- Disable FoundationOverlay
             local FoundationOverlay = game.CoreGui:FindFirstChild("FoundationOverlay")
             if FoundationOverlay then
                 FoundationOverlay.Enabled = false
@@ -52,7 +51,6 @@ spawn(function()
     end
 end)
 
--- Watch for new popups being added
 game.CoreGui.ChildAdded:Connect(function(ins)
     if ins.Name == "FoundationOverlay" then
         ins.Enabled = false
@@ -61,6 +59,82 @@ game.CoreGui.ChildAdded:Connect(function(ins)
         ins.Enabled = false
     end
 end)
+
+-- Helper function to find the Player's Plot using Dex Hierarchy
+local function getPlayerPlot()
+    local player = Players.LocalPlayer
+    if not player then return nil end
+    
+    for _, v in ipairs(workspace:GetDescendants()) do
+        if v:IsA("Model") or v:IsA("Folder") then
+            local nameTagAnchor = v:FindFirstChild("NameTagAnchor")
+            if nameTagAnchor then
+                local ownerTag = nameTagAnchor:FindFirstChild("OwnerTag")
+                local nameLabel = ownerTag and ownerTag:FindFirstChild("Name")
+                
+                -- Check if the TextLabel matches your Player Name or Display Name
+                if nameLabel and (nameLabel:IsA("TextLabel") or nameLabel:IsA("StringValue")) then
+                    if nameLabel.Text == player.Name or nameLabel.Text == player.DisplayName or string.find(nameLabel.Text, player.DisplayName) then
+                        return v -- This returns the parent Plot model (e.g., Plot4, Plot5)
+                    end
+                end
+            end
+        end
+    end
+    return nil
+end
+
+-- Auto Collect Wood Function
+local function autoWoodProcess()
+    spawn(function()
+        while autoCollectWood do
+            pcall(function()
+                local player = Players.LocalPlayer
+                local character = player and player.Character
+                if character and character:FindFirstChild("HumanoidRootPart") then
+                    
+                    -- Get dynamic plot location using your Dex layout
+                    local playerPlot = getPlayerPlot()
+                    
+                    if playerPlot then
+                        -- Find WoodHolder in player's plot
+                        local woodHolder = playerPlot:FindFirstChild("WoodHolder", true)
+                        if woodHolder and woodHolder:IsA("BasePart") then
+                            -- Teleport to WoodHolder
+                            character.HumanoidRootPart.CFrame = woodHolder.CFrame * CFrame.new(0, 3, 0)
+                            wait(0.2)
+                            
+                            -- Trigger ProximityPrompt on WoodHolder
+                            for _, prompt in ipairs(woodHolder:GetDescendants()) do
+                                if prompt:IsA("ProximityPrompt") then
+                                    fireproximityprompt(prompt)
+                                end
+                            end
+                            wait(0.3)
+                        end
+                        
+                        -- Find SellAnchor in player's plot
+                        local sellAnchor = playerPlot:FindFirstChild("SellAnchor", true)
+                        if sellAnchor and sellAnchor:IsA("BasePart") then
+                            -- Teleport to SellAnchor
+                            character.HumanoidRootPart.CFrame = sellAnchor.CFrame * CFrame.new(0, 3, 0)
+                            wait(0.2)
+                            
+                            -- Trigger ProximityPrompt on SellAnchor
+                            for _, prompt in ipairs(sellAnchor:GetDescendants()) do
+                                if prompt:IsA("ProximityPrompt") then
+                                    fireproximityprompt(prompt)
+                                end
+                            end
+                            wait(0.3)
+                        end
+                    end
+                end
+            end)
+            wait(0.5)
+        end
+    end)
+end
 
 -- Create Tabs
 local AutoFarmTab = Window:Tab({ Title = "Auto Farm", Icon = "tractor" })
@@ -71,6 +145,18 @@ local SettingsTab = Window:Tab({ Title = "Settings", Icon = "settings" })
 -- ====================================================================
 -- AUTO FARM TAB
 -- ====================================================================
+
+-- Auto Collect Wood
+AutoFarmTab:Toggle({
+    Title = "Auto Collect & Sell Wood",
+    Value = false,
+    Callback = function(state)
+        autoCollectWood = state
+        if state then
+            autoWoodProcess()
+        end
+    end
+})
 
 -- Axe Speed Auto Upgrade
 AutoFarmTab:Toggle({
@@ -283,5 +369,6 @@ SettingsTab:Button({
         autoStumpBuy = false
         autoLuck = false
         autoSpinStand = false
+        autoCollectWood = false
     end
 })
