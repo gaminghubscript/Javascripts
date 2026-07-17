@@ -1,0 +1,416 @@
+-- 1. Initialize the WindUI Library Loader
+local _version = "1.6.66"
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/download/" .. _version .. "/main.lua"))()
+
+-- 2. Create the Window Framework
+local Window = WindUI:CreateWindow({
+   Title = "Premium Hub",
+   Icon = "fish",
+   Author = "v1.0",
+   Folder = "PremiumHub_Configs",
+   Size = UDim2.new(0, 580, 0, 460),
+   Transparent = true,
+   Theme = "Dark"
+})
+
+-- 3. Declare Tabs
+local MainTab = Window:Tab({ Title = "Main", Icon = "home" })
+local AutoTab = Window:Tab({ Title = "Auto", Icon = "refresh-cw" })
+local SettingsTab = Window:Tab({ Title = "Settings", Icon = "settings" })
+
+-- ====================================================================
+-- GAME LOGIC & NETWORK MODULES
+-- ====================================================================
+local Players = game:GetService("Players")
+local Player = Players.LocalPlayer
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local VirtualUser = game:GetService("VirtualUser")
+local Workspace = game:GetService("Workspace")
+local Vim = game:GetService("VirtualInputManager")
+local GuiService = game:GetService("GuiService")
+
+-- Configuration variables linked to UI or standard defaults
+local CONFIG = {
+    fishCastDelay = 1.0,
+    fishReelDelay = 0.3,
+    fishLoopDelay = 1.5,
+}
+local FIXED_FISH_DELAY = 6 -- Locked backup safety delay for V2
+
+-- Tracking variables
+local lastFishTime = 0
+local fishCaughtCount = 0
+
+-- Cobalt Cutscene Bypass Remotes
+local cameraReturnedToPier = ReplicatedStorage:WaitForChild("shared/network@globalEvents"):WaitForChild("cameraReturnedToPier")
+local castCutsceneRigSuspendRequested = ReplicatedStorage:WaitForChild("shared/network@globalEvents"):WaitForChild("castCutsceneRigSuspendRequested")
+local fishLanded = ReplicatedStorage:WaitForChild("shared/network@globalEvents"):FindFirstChild("fishLanded")
+
+if fishLanded then
+    fishLanded.OnClientEvent:Connect(function(...)
+        lastFishTime = tick()
+        fishCaughtCount = fishCaughtCount + 1
+    end)
+end
+
+local function bypassCutscenes()
+    pcall(function()
+        cameraReturnedToPier:FireServer()
+        castCutsceneRigSuspendRequested:FireServer()
+    end)
+end
+
+local function performCollectCash() 
+    local globalFunctions = ReplicatedStorage:WaitForChild("shared/network@globalFunctions") 
+    local userId = tostring(Player.UserId) 
+    local args = {0, userId} 
+    globalFunctions:WaitForChild("collectPlotMoney"):FireServer(unpack(args)) 
+end 
+
+local function equipBestFish(tierNumber) 
+    local remote = ReplicatedStorage:WaitForChild("shared/network@globalFunctions"):WaitForChild("equipBestAquariumFish") 
+    local safeTier = math.clamp(tierNumber, 1, 20) 
+    local args = { safeTier } 
+    remote:FireServer(unpack(args)) 
+end 
+
+local autoFishV1Task, autoFishV2Task, autoCollectTask, autoEquipFishTask, autoRebirthTask, autoUpgradeTask
+
+local function findFishingZone()
+    local map = Workspace:FindFirstChild("Map")
+    if map then
+        local fa = map:FindFirstChild("FishingArea")
+        if fa then
+            local zone = fa:FindFirstChild("FishingZone")
+            if zone then return zone end
+        end
+    end
+    for _, d in pairs(Workspace:GetDescendants()) do
+        if d.Name == "FishingZone" and d:IsA("BasePart") then return d end
+    end
+    return nil
+end
+
+-- Re-implemented direct UI scanning input engine
+local function clickFishButton()
+    local playerGui = Player:WaitForChild("PlayerGui")
+    local inset = GuiService:GetGuiInset()
+    local clicked = false
+    
+    for _, d in pairs(playerGui:GetDescendants()) do
+        if clicked then break end
+        pcall(function()
+            if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text:lower():find("fish") then
+                local p = d.Parent
+                while p and p ~= playerGui do
+                    if p:IsA("GuiButton") or p:IsA("ImageButton") or p:IsA("TextButton") then
+                        local cx = p.AbsolutePosition.X + (p.AbsoluteSize.X / 2) + inset.X
+                        local cy = p.AbsolutePosition.Y + (p.AbsoluteSize.Y / 2) + inset.Y
+                        Vim:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
+                        task.wait(0.05)
+                        Vim:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
+                        clicked = true
+                        return
+                    end
+                    p = p.Parent
+                end
+            end
+        end)
+    end
+    return clicked
+end
+
+-- ====================================================================
+-- MAIN TAB
+-- ====================================================================
+
+MainTab:Toggle({
+    Title = "Noclip",
+    Desc = "Walk through walls.",
+    Value = false,
+    Callback = function(state)
+        _G.NoclipActive = state 
+        if _G.NoclipActive then 
+            if _G.NoclipConnection then _G.NoclipConnection:Disconnect() end 
+            _G.NoclipConnection = RunService.Stepped:Connect(function() 
+                local character = Player.Character 
+                if character then 
+                    for _, part in pairs(character:GetDescendants()) do 
+                        if part:IsA("BasePart") then part.CanCollide = false end 
+                    end 
+                end 
+            end) 
+        else 
+            if _G.NoclipConnection then 
+                _G.NoclipConnection:Disconnect() 
+                _G.NoclipConnection = nil 
+            end 
+        end
+    end
+})
+
+MainTab:Toggle({
+    Title = "Fly",
+    Desc = "Fly around using WASD.",
+    Value = false,
+    Callback = function(state)
+        local function setFly(enabled) 
+            local character = Player.Character 
+            local hrp = character and character:FindFirstChild("HumanoidRootPart") 
+            if enabled then 
+                if not hrp then return end 
+                _G.flyVelocity = Instance.new("BodyVelocity") 
+                _G.flyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge) 
+                _G.flyVelocity.Velocity = Vector3.new(0, 0, 0) 
+                _G.flyVelocity.Parent = hrp 
+                
+                _G.flyGyro = Instance.new("BodyGyro") 
+                _G.flyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge) 
+                _G.flyGyro.P = 10000 
+                _G.flyGyro.D = 100 
+                _G.flyGyro.CFrame = hrp.CFrame 
+                _G.flyGyro.Parent = hrp 
+                
+                task.spawn(function() 
+                    while _G.FlyActive and character and hrp do 
+                        local cameraCFrame = workspace.CurrentCamera.CFrame 
+                        local moveDir = Vector3.new(0, 0, 0) 
+                        if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cameraCFrame.LookVector end 
+                        if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cameraCFrame.LookVector end 
+                        if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cameraCFrame.RightVector end 
+                        if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cameraCFrame.RightVector end 
+                        _G.flyVelocity.Velocity = moveDir * 50 
+                        _G.flyGyro.CFrame = cameraCFrame 
+                        task.wait() 
+                    end 
+                end) 
+            else 
+                if _G.flyVelocity then _G.flyVelocity:Destroy() end 
+                if _G.flyGyro then _G.flyGyro:Destroy() end 
+            end 
+        end 
+        _G.FlyActive = state 
+        setFly(_G.FlyActive)
+    end
+})
+
+-- ====================================================================
+-- AUTO TAB
+-- ====================================================================
+
+AutoTab:Toggle({
+    Title = "Auto Fish V1 (Input Interface Method)",
+    Desc = "Uses standard UI scanning & screen clicks to fish while bypassing cutscenes.",
+    Value = false,
+    Callback = function(state)
+        _G.AutoFishV1Active = state 
+        if _G.AutoFishV1Active then 
+            autoFishV1Task = task.spawn(function() 
+                while _G.AutoFishV1Active do 
+                    pcall(function()
+                        local character = Player.Character
+                        local hrp = character and character:FindFirstChild("HumanoidRootPart")
+                        local zone = findFishingZone()
+                        
+                        if zone and hrp then
+                            local dist = (hrp.Position - zone.Position).Magnitude
+                            if dist > 20 then
+                                hrp.CFrame = CFrame.new(zone.Position + Vector3.new(0, 5, 0))
+                                task.wait(1)
+                            end
+                        end
+                        
+                        if clickFishButton() then
+                            task.wait(CONFIG.fishCastDelay)
+                            bypassCutscenes() -- Clean skip logic invoked safely here
+                            
+                            local waitStart = tick()
+                            while tick() - waitStart < 10 and _G.AutoFishV1Active do 
+                                if lastFishTime > waitStart then break end 
+                                
+                                clickFishButton()
+                                
+                                local cam = workspace.CurrentCamera
+                                local cx, cy = cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2
+                                Vim:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
+                                task.wait(0.02)
+                                Vim:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
+                                
+                                task.wait(0.1)
+                            end
+                            
+                            task.wait(CONFIG.fishReelDelay)
+                            clickFishButton()
+                        else
+                            local cam = workspace.CurrentCamera
+                            local cx, cy = cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2
+                            Vim:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
+                            task.wait(0.05)
+                            Vim:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
+                        end
+                    end)
+                    task.wait(CONFIG.fishLoopDelay)
+                end 
+            end) 
+        else 
+            if autoFishV1Task then task.cancel(autoFishV1Task) autoFishV1Task = nil end 
+        end
+    end
+})
+
+AutoTab:Toggle({
+    Title = "Auto Fish V2 (Payload Version)",
+    Desc = "Fires fishing network payloads directly synced with an anti-glitch delay.",
+    Value = false,
+    Callback = function(state)
+        _G.AutoFishV2Active = state 
+        if _G.AutoFishV2Active then 
+            autoFishV2Task = task.spawn(function() 
+                local targetRemote = ReplicatedStorage:WaitForChild("shared/network@globalEvents"):WaitForChild("castFishingHook")
+                
+                while _G.AutoFishV2Active do 
+                    pcall(function()
+                        local character = Player.Character
+                        local hrp = character and character:FindFirstChild("HumanoidRootPart")
+                        local zone = findFishingZone()
+                        
+                        if zone and hrp and (hrp.Position - zone.Position).Magnitude > 25 then
+                            hrp.CFrame = CFrame.new(zone.Position + Vector3.new(0, 5, 0))
+                            task.wait(0.4)
+                        end
+                        
+                        if hrp and targetRemote then
+                            targetRemote:FireServer({
+                                direction = Vector3.new(0, 0, 1),
+                                startPosition = hrp.Position,
+                                utilizedPowerFraction = 1,
+                                peakBias = 0.35,
+                                skillCheckStrength = 100
+                            })
+                        end
+                    end)
+                    task.wait(FIXED_FISH_DELAY)
+                end 
+            end) 
+        else 
+            if autoFishV2Task then task.cancel(autoFishV2Task) autoFishV2Task = nil end 
+        end
+    end
+})
+
+AutoTab:Toggle({
+    Title = "Auto Collect Cash",
+    Desc = "Collects money from plot every 10 seconds.",
+    Value = false,
+    Callback = function(state)
+        _G.AutoCollectActive = state 
+        if _G.AutoCollectActive then 
+            autoCollectTask = task.spawn(function() 
+                while _G.AutoCollectActive do 
+                    if typeof(performCollectCash) == "function" then performCollectCash() end 
+                    task.wait(10) 
+                end 
+            end) 
+        elseif autoCollectTask then 
+            task.cancel(autoCollectTask) autoCollectTask = nil 
+        end
+    end
+})
+
+AutoTab:Toggle({
+    Title = "Auto Equip Best Fish",
+    Desc = "Puts best fish in aquarium tier 1.",
+    Value = false,
+    Callback = function(state)
+        _G.AutoEquipFish = state 
+        if _G.AutoEquipFish then 
+            autoEquipFishTask = task.spawn(function() 
+                while _G.AutoEquipFish do 
+                    if typeof(equipBestFish) == "function" then equipBestFish(1) end 
+                    task.wait(15) 
+                end 
+            end) 
+        else
+            if autoEquipFishTask then task.cancel(autoEquipFishTask) autoEquipFishTask = nil end 
+        end
+    end
+})
+
+AutoTab:Toggle({
+    Title = "Auto Rebirth",
+    Desc = "Fires rebirth remote every 5 seconds.",
+    Value = false,
+    Callback = function(state)
+        _G.AutoRebirthActive = state 
+        if _G.AutoRebirthActive then 
+            autoRebirthTask = task.spawn(function() 
+                while _G.AutoRebirthActive do 
+                    local args = { 1 } 
+                    ReplicatedStorage:WaitForChild("shared/network@globalFunctions"):WaitForChild("performRebirth"):FireServer(unpack(args)) 
+                    task.wait(5) 
+                end 
+            end) 
+        elseif autoRebirthTask then 
+            task.cancel(autoRebirthTask) autoRebirthTask = nil 
+        end
+    end
+})
+
+AutoTab:Toggle({
+    Title = "Auto Upgrade Aquarium",
+    Desc = "Upgrades aquarium every 5 seconds.",
+    Value = false,
+    Callback = function(state)
+        _G.AutoUpgradeActive = state 
+        if _G.AutoUpgradeActive then 
+            autoUpgradeTask = task.spawn(function() 
+                while _G.AutoUpgradeActive do 
+                    local args = { 0 } 
+                    ReplicatedStorage:WaitForChild("shared/network@globalFunctions"):WaitForChild("upgradeAquarium"):FireServer(unpack(args)) 
+                    task.wait(5) 
+                end 
+            end) 
+        else 
+            if autoUpgradeTask then task.cancel(autoUpgradeTask) autoUpgradeTask = nil end 
+        end
+    end
+})
+
+-- ====================================================================
+-- SETTINGS TAB
+-- ====================================================================
+
+SettingsTab:Toggle({
+    Title = "Anti AFK",
+    Desc = "Prevents disconnection for being idle.",
+    Value = false,
+    Callback = function(state)
+        _G.AntiAFKActive = state 
+        if _G.AntiAFKActive then 
+            _G.AFKConnection = Player.Idled:Connect(function() 
+                VirtualUser:CaptureController() 
+                VirtualUser:ClickButton2(Vector2.new()) 
+            end) 
+        else 
+            if _G.AFKConnection then 
+                _G.AFKConnection:Disconnect() 
+                _G.AFKConnection = nil 
+            end 
+        end
+    end
+})
+
+SettingsTab:Slider({
+    Title = "Walk Speed",
+    Desc = "Changes character movement speed.",
+    Min = 16,
+    Max = 100,
+    Value = 16,
+    Callback = function(value)
+        if Player.Character and Player.Character:FindFirstChild("Humanoid") then 
+            Player.Character.Humanoid.WalkSpeed = value 
+        end 
+    end
+})
