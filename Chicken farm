@@ -1,177 +1,198 @@
---// Rayfield Initialization
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Paper Auto",
-    LoadingTitle = "Paper Auto 🐔",
-    LoadingSubtitle = "by pinatmartha",
-    ConfigurationSaving = { Enabled = false },
-    KeySystem = false,
+    Name = "Chicken Farm | Goldbed",
+    LoadingTitle = "Loading Automation...",
+    LoadingSubtitle = "by Goldbed",
+    ConfigurationSaving = {
+        Enabled = false
+    },
+    Discord = {
+        Enabled = false
+    },
+    KeySystem = false
 })
 
-local MainTab = Window:CreateTab("Main Features", 4483362458)
+local Tab = Window:CreateTab("Automation", 4483362458)
 
---// Services & Remotes
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Workspace = game:GetService("Workspace")
+local AutoBuy = false
+local BuyAmount = 1 -- Default amount
+local AutoMerge = false
+local AutoCollect = false
+local AutoUpgrade = false
+local AutoDeposit = false
 
-local PaperRemotes = ReplicatedStorage:WaitForChild("Paper"):WaitForChild("Remotes")
-local RemoteFunc = PaperRemotes:WaitForChild("__remotefunction")
-local RemoteEvent = PaperRemotes:WaitForChild("__remoteevent")
-
---// Automation States
-local State = {
-    AutoMerge = false,
-    AutoCollectCash = false,
-    AutoDepositEggs = false,
-    AutoBuyChickens = false,
-    AutoCollectEggs = false,
-    AutoUpgradeProcess = false,
-    BuyQuantity = 1
-}
-
---// Helper Functions
-local function Notify(title, content)
-    Rayfield:Notify({
-        Title = title,
-        Content = content,
-        Duration = 3,
-        Image = 4483362458
-    })
-end
-
---// Automation Loops
-task.spawn(function()
-    while true do
-        task.wait(1)
-        if State.AutoMerge then RemoteFunc:InvokeServer("Merge Chickens") end
-    end
-end)
-
-task.spawn(function()
-    while true do
-        task.wait(2)
-        if State.AutoCollectCash then RemoteFunc:InvokeServer("Collect Cash") end
-    end
-end)
-
-task.spawn(function()
-    while true do
-        task.wait(2)
-        if State.AutoDepositEggs then RemoteFunc:InvokeServer("Deposit Eggs") end
-    end
-end)
-
-task.spawn(function()
-    while true do
-        task.wait(1)
-        if State.AutoBuyChickens then RemoteFunc:InvokeServer("Buy Chickens", State.BuyQuantity) end
-    end
-end)
-
-task.spawn(function()
-    while true do
-        task.wait(1)
-        if State.AutoUpgradeProcess then RemoteFunc:InvokeServer("Upgrade Process Level") end
-    end
-end)
-
---// Egg Collection Listener
-local EggsFolder = Workspace:WaitForChild("Eggs")
-EggsFolder.ChildAdded:Connect(function(egg)
-    if not State.AutoCollectEggs then return end
-    
-    task.wait(1)
-    RemoteEvent:FireServer("Collect Egg", egg.Name)
-    task.wait()
-    egg:Destroy()
-    
-    -- Sequential chain from original script
-    RemoteFunc:InvokeServer("Deposit Eggs")
-    RemoteFunc:InvokeServer("Collect Cash")
-    RemoteFunc:InvokeServer("Merge Chickens")
-    RemoteFunc:InvokeServer("Buy Chickens", State.BuyQuantity)
-    RemoteFunc:InvokeServer("Upgrade Process Level")
-end)
-
---// UI Layout
-MainTab:CreateSection("Chicken Automation")
-
-MainTab:CreateToggle({
-    Name = "Auto Merge Chickens",
-    CurrentValue = false,
-    Callback = function(v)
-        State.AutoMerge = v
-        Notify("Auto Merge", v and "Enabled" or "Disabled")
+-- DROPDOWN: CHOOSE BUY AMOUNT
+Tab:CreateDropdown({
+    Name = "Buy Amount",
+    Options = {"1", "5", "25", "100"},
+    CurrentOption = {"1"},
+    MultipleOptions = false,
+    Flag = "BuyAmountDropdown",
+    Callback = function(Option)
+        BuyAmount = tonumber(Option[1])
     end,
 })
 
-MainTab:CreateToggle({
+-- TOGGLE 1: AUTO BUY CHICKENS
+Tab:CreateToggle({
     Name = "Auto Buy Chickens",
     CurrentValue = false,
-    Callback = function(v)
-        State.AutoBuyChickens = v
-        Notify("Auto Buy Chickens", v and "Enabled" or "Disabled")
+    Flag = "AutoBuyChickensToggle", 
+    Callback = function(Value)
+        AutoBuy = Value
+        
+        task.spawn(function()
+            while AutoBuy do
+                local args = {
+                    "Buy Chickens",
+                    BuyAmount
+                }
+                
+                local remote = game:GetService("ReplicatedStorage")
+                    :WaitForChild("Paper", 2)
+                    :WaitForChild("Remotes", 2)
+                    :WaitForChild("__remotefunction", 2)
+                
+                if remote then
+                    remote:InvokeServer(unpack(args))
+                else
+                    break
+                end
+                
+                task.wait(0.5)
+            end
+        end)
     end,
 })
 
-MainTab:CreateToggle({
-    Name = "Auto Upgrade Process Level",
+-- TOGGLE 2: AUTO MERGE CHICKENS
+Tab:CreateToggle({
+    Name = "Auto Merge Chickens",
     CurrentValue = false,
-    Callback = function(v)
-        State.AutoUpgradeProcess = v
-        Notify("Auto Upgrade Process", v and "Enabled" or "Disabled")
+    Flag = "AutoMergeChickensToggle", 
+    Callback = function(Value)
+        AutoMerge = Value
+        
+        task.spawn(function()
+            while AutoMerge do
+                local args = {
+                    "Merge Chickens"
+                }
+                
+                local remote = game:GetService("ReplicatedStorage")
+                    :WaitForChild("Paper", 2)
+                    :WaitForChild("Remotes", 2)
+                    :WaitForChild("__remotefunction", 2)
+                
+                if remote then
+                    remote:InvokeServer(unpack(args))
+                else
+                    break
+                end
+                
+                task.wait(0.5)
+            end
+        end)
     end,
 })
 
-MainTab:CreateSection("Economy & Eggs")
-
-MainTab:CreateToggle({
+-- TOGGLE 3: AUTO COLLECT CASH
+Tab:CreateToggle({
     Name = "Auto Collect Cash",
     CurrentValue = false,
-    Callback = function(v)
-        State.AutoCollectCash = v
-        Notify("Auto Collect Cash", v and "Enabled" or "Disabled")
+    Flag = "AutoCollectCashToggle", 
+    Callback = function(Value)
+        AutoCollect = Value
+        
+        task.spawn(function()
+            while AutoCollect do
+                local args = {
+                    "Collect Cash"
+                }
+                
+                local remote = game:GetService("ReplicatedStorage")
+                    :WaitForChild("Paper", 2)
+                    :WaitForChild("Remotes", 2)
+                    :WaitForChild("__remotefunction", 2)
+                
+                if remote then
+                    remote:InvokeServer(unpack(args))
+                else
+                    break
+                end
+                
+                task.wait(0.3)
+            end
+        end)
     end,
 })
 
-MainTab:CreateToggle({
+-- TOGGLE 4: AUTO UPGRADE PROCESS LEVEL
+Tab:CreateToggle({
+    Name = "Auto Upgrade Process Level",
+    CurrentValue = false,
+    Flag = "AutoUpgradeProcessToggle", 
+    Callback = function(Value)
+        AutoUpgrade = Value
+        
+        task.spawn(function()
+            while AutoUpgrade do
+                local args = {
+                    "Upgrade Process Level"
+                }
+                
+                local remote = game:GetService("ReplicatedStorage")
+                    :WaitForChild("Paper", 2)
+                    :WaitForChild("Remotes", 2)
+                    :WaitForChild("__remotefunction", 2)
+                
+                if remote then
+                    remote:InvokeServer(unpack(args))
+                else
+                    break
+                end
+                
+                task.wait(1)
+            end
+        end)
+    end,
+})
+
+-- TOGGLE 5: AUTO DEPOSIT EGGS
+Tab:CreateToggle({
     Name = "Auto Deposit Eggs",
     CurrentValue = false,
-    Callback = function(v)
-        State.AutoDepositEggs = v
-        Notify("Auto Deposit Eggs", v and "Enabled" or "Disabled")
+    Flag = "AutoDepositEggsToggle", 
+    Callback = function(Value)
+        AutoDeposit = Value
+        
+        task.spawn(function()
+            while AutoDeposit do
+                local args = {
+                    "Deposit Eggs"
+                }
+                
+                local remote = game:GetService("ReplicatedStorage")
+                    :WaitForChild("Paper", 2)
+                    :WaitForChild("Remotes", 2)
+                    :WaitForChild("__remotefunction", 2)
+                
+                if remote then
+                    remote:InvokeServer(unpack(args))
+                else
+                    break
+                end
+                
+                task.wait(0.5)
+            end
+        end)
     end,
 })
 
-MainTab:CreateToggle({
-    Name = "Auto Collect Eggs (Ground)",
-    CurrentValue = false,
-    Callback = function(v)
-        State.AutoCollectEggs = v
-        Notify("Auto Collect Eggs", v and "Enabled" or "Disabled")
-    end,
+Rayfield:Notify({
+    Title = "Script Loaded",
+    Content = "Made by GOLDBED",
+    Duration = 5,
+    Image = 4483362458,
 })
-
-MainTab:CreateSection("Settings")
-
-MainTab:CreateInput({
-    Name = "Buy Quantity",
-    PlaceholderText = "Amount to buy (e.g. 1)",
-    RemoveTextAfterFocusLost = false,
-    Callback = function(text)
-        local n = tonumber(text)
-        if n and n >= 1 then
-            State.BuyQuantity = math.floor(n)
-            Notify("Buy Quantity", "Set to " .. State.BuyQuantity)
-        end
-    end,
-})
-
-MainTab:CreateButton({
-    Name = "Destroy GUI",
-    Callback = function() Rayfield:Destroy() end,
-})
-
---// Initialization Notification
-Notify("Loaded", "Paper Auto loaded successfully!")
